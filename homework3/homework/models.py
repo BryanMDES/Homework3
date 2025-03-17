@@ -27,7 +27,31 @@ class Classifier(nn.Module):
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
         # TODO: implement
-        pass
+        ####################Implementation from my own method
+        #Defining CNN Layers
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),  # (B, 32, 64, 64)
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # Downsample -> (B, 32, 32, 32)
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  # (B, 64, 32, 32)
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # (B, 64, 16, 16)
+
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),  # (B, 128, 16, 16)
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # (B, 128, 8, 8)
+        )
+
+        # This is a fully connected layer
+        self.fc = nn.Linear(128 * 8 * 8, num_classes)
+
+        ################################From my own method
+
+        #pass
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -41,9 +65,23 @@ class Classifier(nn.Module):
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
         # TODO: replace with actual forward pass
-        logits = torch.randn(x.size(0), 6)
+        #logits = torch.randn(x.size(0), 6)
+
+        #####################My own method
+        x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        
+        # Pass through CNN layers
+        x = self.conv_layers(x)
+
+        # Flatten before FC layer
+        x = x.view(x.size(0), -1)  # (B, 128*8*8)
+        
+        # Fully connected output
+        logits = self.fc(x)  # (B, 6)
 
         return logits
+
+        ####################My own method
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
