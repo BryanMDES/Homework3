@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from models import Classifier  # Import your CNN model
-from datasets.classification_datasets import load_data  # Adjust path if needed
+from datasets.classification_dataset import load_data  # Adjust path if needed
 
 # 1️⃣ **Set device (GPU if available)**
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
