@@ -9,7 +9,8 @@ from datasets.classification_dataset import load_data  # Adjust path if needed
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 2️⃣ **Load the Dataset**
-train_loader, val_loader = load_data(batch_size=32)  # Ensure correct dataset loading
+train_loader = load_data("classification_data/train", batch_size=32)
+val_loader = load_data("classification_data/val", batch_size=32)
 
 # 3️⃣ **Initialize Model, Loss, and Optimizer**
 model = Classifier().to(device)  # Use your CNN model
