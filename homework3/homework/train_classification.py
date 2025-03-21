@@ -40,5 +40,5 @@ for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss:.4f}, Accuracy: {accuracy:.4f}")
 
 # 5️⃣ **Save the Model**
-torch.save(model.state_dict(), "classifier.pth")
-print("Model saved as classifier.pth")
+torch.save(model.state_dict(), "classifier.th")
+print("Model saved as classifier.th")
