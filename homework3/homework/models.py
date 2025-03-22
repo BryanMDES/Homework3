@@ -122,7 +122,7 @@ class Detector(torch.nn.Module):
           nn.BatchNorm2d(16),
           nn.ReLU(),
           nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-          nn.BatchNorm2d(32)
+          nn.BatchNorm2d(32),
           nn.ReLU(),
           nn.MaxPool2d(2,2),
           nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
@@ -145,9 +145,9 @@ class Detector(torch.nn.Module):
           nn.ReLU(),
       )
 
-      self.segmentation_head = nn.Conv2d(16, num_classes, kernel_size=1)
+        self.segmentation_head = nn.Conv2d(16, num_classes, kernel_size=1)
 
-      self.depth_head = nn.Conv2d(16, 1, kernel_size=1)
+        self.depth_head = nn.Conv2d(16, 1, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
