@@ -116,8 +116,38 @@ class Detector(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO: implement
-        pass
+        # TODO
+        self.encoder = nn.Sequential(
+          nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(16),
+          nn.ReLU(),
+          nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(32)
+          nn.ReLU(),
+          nn.MaxPool2d(2,2),
+          nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(64),
+          nn.ReLU(),
+          nn.MaxPool2d(2, 2),
+        )
+      
+        self.decoder = nn.Sequential(
+          nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+          nn.ReLU(),
+          nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(32),
+          nn.ReLU(),
+
+          nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2),
+          nn.ReLU(),
+          nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(16),
+          nn.ReLU(),
+      )
+
+      self.segmentation_head = nn.Conv2d(16, num_classes, kernel_size=1)
+
+      self.depth_head = nn.Conv2d(16, 1, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -133,13 +163,28 @@ class Detector(torch.nn.Module):
                 - depth (b, h, w)
         """
         # optional: normalizes the input
-        z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+
+        x = self.encoder(x)
+
+        x = self.decoder(x)
+
+        #Getting the ouutputs
+        segmentation_logits = self.segmentation_head(x)
+        depth_prediction = self.depth_head(x).squeeze(1)
+
+        segmentation_logits = self.segmentation_head(x)
+        depth_prediction = self.depth_head(x).squeeze(1)
+
+        return segmentation_logits, depth_prediction
+
+
 
         # TODO: replace with actual forward pass
-        logits = torch.randn(x.size(0), 3, x.size(2), x.size(3))
-        raw_depth = torch.rand(x.size(0), x.size(2), x.size(3))
+        #logits = torch.randn(x.size(0), 3, x.size(2), x.size(3))
+        #raw_depth = torch.rand(x.size(0), x.size(2), x.size(3))
 
-        return logits, raw_depth
+        #return logits, raw_depth
 
     def predict(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
