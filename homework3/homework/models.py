@@ -137,12 +137,14 @@ class Detector(torch.nn.Module):
           nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(32),
           nn.ReLU(),
+          nn.Dropout(0.3),
 
           nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2),
           nn.ReLU(),
           nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(16),
           nn.ReLU(),
+          nn.Dropout(0.3),
       )
 
         self.segmentation_head = nn.Conv2d(16, num_classes, kernel_size=1)
