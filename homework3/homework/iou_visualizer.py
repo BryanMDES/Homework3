@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -66,6 +67,7 @@ def handle_bboxes(img, track_mask, pred_classes, iou, epoch, logger, log_dir):
         logger (tb.SummaryWriter): TensorBoard logger.
         log_dir (Path): Directory to save images.
     """
+    os.makedirs(str(log_dir), exist_ok=True)
     batch_image = img[0].cpu().numpy().transpose(1, 2, 0)  # Convert from (C, H, W) -> (H, W, C)
 
     if batch_image.max() <= 1.0:
@@ -102,10 +104,18 @@ def handle_bboxes(img, track_mask, pred_classes, iou, epoch, logger, log_dir):
 
         #print(f"DEBUG - GT BBoxes: {gt_bboxes.shape}, Pred BBoxes: {pred_bboxes.shape}, IoUs: {iou_values.shape}")
 
-        output_path = log_dir / f"epoch_{epoch+1}_iou.png"
+        output_path = os.path.join(str(log_dir), f"epoch_{epoch+1}_iou.png")  # Ensure correct path format
+        print(f"✅ DEBUG: Saving IoU visualization at: {output_path}")  # Debugging print
+
+        #os.makedirs(str(log_dir), exist_ok=True)
+
         draw_iou_bounding_boxes(batch_image, gt_bboxes, pred_bboxes, iou_values, str(output_path))
 
         logger.add_image("Validation/BoundingBoxes", np.array(Image.open(output_path)), epoch, dataformats='HWC')
+        
+        print(f"✅ DEBUG: handle_bboxes() called for epoch {epoch+1}")  # Debugging print
+        print(f"DEBUG: Saving IoU visualization at: {log_dir / f'epoch_{epoch+1}_iou.png'}")
+
 
 def draw_iou_bounding_boxes(image, gt_bboxes, pred_bboxes, ious, output_path="output.png"):
     """
@@ -118,6 +128,13 @@ def draw_iou_bounding_boxes(image, gt_bboxes, pred_bboxes, ious, output_path="ou
         ious (torch.Tensor): IoU values of shape (N,).
         output_path (str): Path to save the rendered image.
     """
+    print(f"✅ DEBUG: Saving IoU visualization at {output_path}")
+
+    output_dir = os.path.dirname(output_path)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"✅ DEBUG: Output directory confirmed at {output_dir}")
+
+  
     if isinstance(image, torch.Tensor):
         image = image.permute(1, 2, 0).cpu().numpy() if image.dim() == 3 else image.cpu().numpy()
 
@@ -140,6 +157,11 @@ def draw_iou_bounding_boxes(image, gt_bboxes, pred_bboxes, ious, output_path="ou
         rect = patches.Rectangle((x_min, y_min), x_max - x_min, y_max - y_min, linewidth=2, edgecolor=color_gt, facecolor="none")
         ax.add_patch(rect)
 
+     # Debug: Print bounding box details
+    print(f"Ground Truth BBoxes: {gt_bboxes}")
+    print(f"Predicted BBoxes: {pred_bboxes}")
+    print(f"IoU Values: {ious}")
+
     # Draw predicted boxes on top (Yellow)
     for bbox, iou in zip(pred_bboxes, ious):
         x_min, y_min, x_max, y_max = bbox.tolist()
@@ -151,5 +173,16 @@ def draw_iou_bounding_boxes(image, gt_bboxes, pred_bboxes, ious, output_path="ou
     plt.tight_layout()
     plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
+
+    # Save a dummy image to test saving
+    debug_image = np.random.rand(128, 128, 3)  # Generate a random image
+    plt.imsave(output_path.replace(".png", "_debug.png"), debug_image)  # Save debug image
+
+
+    if os.path.exists(output_path):
+        print(f"✅ Image successfully saved at {output_path}")
+    else:
+        print(f"❌ Image saving failed at {output_path}")
+
     print(f"Visualization saved at: {output_path}")
     #gc.collect()
