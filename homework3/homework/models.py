@@ -3,6 +3,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
+
 HOMEWORK_DIR = Path(__file__).resolve().parent
 INPUT_MEAN = [0.2788, 0.2657, 0.2629]
 INPUT_STD = [0.2064, 0.1944, 0.2252]
@@ -121,35 +122,49 @@ class Detector(torch.nn.Module):
           nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(16),
           nn.ReLU(),
-          nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-          nn.BatchNorm2d(32),
+
+          nn.Conv2d(16, 64, kernel_size=3, stride=1, padding=1),  # More depth
+          nn.BatchNorm2d(64),
           nn.ReLU(),
           nn.MaxPool2d(2,2),
-          nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-          nn.BatchNorm2d(64),
+
+          nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(128),
+          nn.ReLU(),
+          nn.MaxPool2d(2,2),
+
+          nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(256),
           nn.ReLU(),
           nn.MaxPool2d(2, 2),
         )
       
         self.decoder = nn.Sequential(
+          nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
+          nn.ReLU(),
+          nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(128),
+          nn.ReLU(),
+          nn.Dropout(0.3),
+
+          nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+          nn.ReLU(),
+          nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+          nn.BatchNorm2d(64),
+          nn.ReLU(),
+          nn.Dropout(0.3),
+
           nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
           nn.ReLU(),
           nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(32),
           nn.ReLU(),
           nn.Dropout(0.3),
-
-          nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2),
-          nn.ReLU(),
-          nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
-          nn.BatchNorm2d(16),
-          nn.ReLU(),
-          nn.Dropout(0.3),
       )
 
-        self.segmentation_head = nn.Conv2d(16, num_classes, kernel_size=1)
+        self.segmentation_head = nn.Conv2d(32, num_classes, kernel_size=1)
 
-        self.depth_head = nn.Conv2d(16, 1, kernel_size=1)
+        self.depth_head = nn.Conv2d(32, 1, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -165,15 +180,15 @@ class Detector(torch.nn.Module):
                 - depth (b, h, w)
         """
         # optional: normalizes the input
-        x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
+        #x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
         x = self.encoder(x)
 
         x = self.decoder(x)
 
         #Getting the ouutputs
-        segmentation_logits = self.segmentation_head(x)
-        depth_prediction = self.depth_head(x).squeeze(1)
+        #segmentation_logits = self.segmentation_head(x)
+        #depth_prediction = self.depth_head(x).squeeze(1)
 
         segmentation_logits = self.segmentation_head(x)
         depth_prediction = self.depth_head(x).squeeze(1)
