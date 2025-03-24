@@ -15,11 +15,15 @@ from iou_visualizer import handle_bboxes
 
 BATCH_SIZE = 16
 LR = 0.0005
-EPOCHS = 20
+EPOCHS = 30
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class_weights = torch.tensor([0.1, 2, 2]).to(DEVICE)  # Reduce background weight
+seg_loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+depth_loss_fn = nn.L1Loss() 
+
 def iou_loss(pred, target, smooth=1e-6):
-  pred = torch.sigmoid(pred)
+  pred = torch.softmax(pred, dim=1)
 
   target = F.one_hot(target.long(), num_classes=pred.shape[1])  # Ensure int64 type
   target = target.permute(0, 3, 1, 2).float()  # Change shape to (B, C, H, W)
@@ -28,20 +32,26 @@ def iou_loss(pred, target, smooth=1e-6):
   union = (pred + target - pred * target).sum((1, 2))
   iou = (intersection + smooth) / (union + smooth)
 
-  return 1 - iou.mean()  # Higher IoU is better, so we subtract from 1
+  return (1 - iou.mean())  # Higher IoU is better, so we subtract from 1
 
-class FocalLoss(torch.nn.Module):
-      def __init__(self, gamma=2.0):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
+def compute_iou(pred, target, num_classes=3, smooth=1e-6):
+    """
+    Computes IoU for each class and returns the mean IoU.
+    """
+    pred = pred.argmax(dim=1)  # Convert logits to class predictions
+    ious = []
+    
+    for cls in range(num_classes):
+        pred_mask = (pred == cls).float()
+        target_mask = (target == cls).float()
+        
+        intersection = (pred_mask * target_mask).sum()
+        union = pred_mask.sum() + target_mask.sum() - intersection
 
-      def forward(self, pred, target):
-        ce_loss = F.cross_entropy(pred, target, reduction='none')
-        pt = torch.exp(-ce_loss)  # Probability of correct classification
-        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-
-        return focal_loss.mean()
-
+        iou = (intersection + smooth) / (union + smooth)
+        ious.append(iou)
+    
+    return sum(ious) / len(ious)  # Mean IoU
 
 def train(exp_dir: str = "logs", seed: int = 2024):
     
@@ -76,11 +86,8 @@ def train(exp_dir: str = "logs", seed: int = 2024):
 
     
     model = Detector().to(device)
-
-    
-    #seg_loss_fn = nn.CrossEntropyLoss()
-    seg_loss_fn = FocalLoss(gamma=2)  # Replace CrossEntropyLoss
-    depth_loss_fn = nn.L1Loss()  
+    #seg_loss_fn = nn.CrossEntropyLoss(weight=class_weights) # Replace CrossEntropyLoss
+    #depth_loss_fn = nn.L1Loss()  
 
     
     optimizer = optim.Adam(model.parameters(), lr=LR)
@@ -102,12 +109,13 @@ def train(exp_dir: str = "logs", seed: int = 2024):
             optimizer.zero_grad()
 
             pred_seg, pred_depth = model(images)
+
             loss_seg = seg_loss_fn(pred_seg, track)  
             loss_depth = depth_loss_fn(pred_depth, depth)  
             loss_iou = iou_loss(pred_seg, track)  
 
             
-            loss = loss_seg + 0.5 * loss_depth + 0.5 * loss_iou  
+            loss = 1.5 * loss_seg + 0.5 * loss_depth + 0.3 * loss_iou  
             loss.backward()
             optimizer.step()
 
@@ -125,11 +133,11 @@ def train(exp_dir: str = "logs", seed: int = 2024):
             logger.add_scalar("train/depth_loss", loss_depth.item(), global_step)
             logger.add_scalar("train/iou_loss", loss_iou.item(), global_step)
             logger.flush()
-
         
         with torch.inference_mode():
             model.eval()
             val_seg_loss, val_depth_loss, val_iou_loss = 0, 0, 0
+            mean_iou = 0
 
             for batch in val_loader:
                 images = batch["image"].to(device)
@@ -146,7 +154,10 @@ def train(exp_dir: str = "logs", seed: int = 2024):
                 val_depth_loss += loss_depth.item()
                 val_iou_loss += loss_iou.item()
 
-        
+                mean_iou += compute_iou(pred_seg,track).item()
+
+        mean_iou /= len(val_loader)
+
         logger.add_scalar("val/seg_loss", val_seg_loss / len(val_loader), global_step)
         logger.add_scalar("val/depth_loss", val_depth_loss / len(val_loader), global_step)
         logger.add_scalar("val/iou_loss", val_iou_loss / len(val_loader), global_step)  # Log IoU validation loss
