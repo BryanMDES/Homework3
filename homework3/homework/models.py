@@ -27,32 +27,37 @@ class Classifier(nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO: implement
-        ####################Implementation from my own method
-        #Defining CNN Layers
-        self.conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),  # (B, 32, 64, 64)
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # Downsample -> (B, 32, 32, 32)
 
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  # (B, 64, 32, 32)
+        """
+        Conv2d: This is like a magnifying glass scanning the picture to look for small patterns like edges, shapes, and textures.
+
+        BatchNorm2d: keeping the numbers balanced (so training is smoother).
+
+        ReLU: keeps positive numbers and throws out negatives.
+
+        MaxPool2d: Shrinks the picture to make it easier to understand.
+        """
+
+        # Building the convolutional Neural Network
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, stride=1, padding=1),  #Looking at images with 32 lenses, look at 3x3 pieces at a time, stride moves 1 step at a time, padding 1 adds a border around the image with 0
+            nn.BatchNorm2d(32), #Keeping numbers in a nice range so it learns better and faster, It will normalize th 32 and clean and balance them.
+            nn.ReLU(), #All negative numbers turn into 0
+            nn.MaxPool2d(2, 2), #Reduces the image size of the image and keeps the important part. Helps with pattern
+
+            #Gettting Smarter
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),  
             nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # (B, 64, 16, 16)
+            nn.MaxPool2d(2, 2),  
 
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),  # (B, 128, 16, 16)
+            #Getting Advanced
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),  
             nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # (B, 128, 8, 8)
+            nn.MaxPool2d(2, 2),  
         )
-
-        # This is a fully connected layer
         self.fc = nn.Linear(128 * 8 * 8, num_classes)
-
-        ################################From my own method
-
-        #pass
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -62,27 +67,22 @@ class Classifier(nn.Module):
         Returns:
             tensor (b, num_classes) logits
         """
-        # optional: normalizes the input
+        # Subtract the average ,eamm and divide by the standard deviation to make all images the same
         z = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        # TODO: replace with actual forward pass
-        #logits = torch.randn(x.size(0), 6)
-
-        #####################My own method
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
         
-        # Pass through CNN layers
+        # Finding patterns
         x = self.conv_layers(x)
 
-        # Flatten before FC layer
-        x = x.view(x.size(0), -1)  # (B, 128*8*8)
+        # Squishing into a straight line so it can be fed into the fc layer
+        x = x.view(x.size(0), -1)  
         
-        # Fully connected output
-        logits = self.fc(x)  # (B, 6)
+        # Takes everything it learns and outputs
+        logits = self.fc(x) 
 
         return logits
 
-        ####################My own method
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -117,13 +117,13 @@ class Detector(torch.nn.Module):
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN))
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD))
 
-        # TODO
+        # Process encoding to take a detailed picture and turn it into smaller version, looks deep at the imageand gets rid of unecessary details
         self.encoder = nn.Sequential(
           nn.Conv2d(in_channels, 16, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(16),
           nn.ReLU(),
 
-          nn.Conv2d(16, 64, kernel_size=3, stride=1, padding=1),  # More depth
+          nn.Conv2d(16, 64, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(64),
           nn.ReLU(),
           nn.MaxPool2d(2,2),
@@ -139,13 +139,14 @@ class Detector(torch.nn.Module):
           nn.MaxPool2d(2, 2),
         )
       
+        # Recreating the image back to its oringal size or something similar
         self.decoder = nn.Sequential(
           nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
           nn.ReLU(),
           nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
           nn.BatchNorm2d(128),
           nn.ReLU(),
-          nn.Dropout(0.3),
+          nn.Dropout(0.3), #There is a 30% change any neuron will get temporarely turned off, during training to prevent overfitting
 
           nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
           nn.ReLU(),
@@ -162,6 +163,7 @@ class Detector(torch.nn.Module):
           nn.Dropout(0.3),
       )
 
+        # Final decision makers forsegmentation and depth estimation. What is this pixel and how far is this pixel
         self.segmentation_head = nn.Conv2d(32, num_classes, kernel_size=1)
 
         self.depth_head = nn.Conv2d(32, 1, kernel_size=1)
@@ -179,29 +181,18 @@ class Detector(torch.nn.Module):
                 - logits (b, num_classes, h, w)
                 - depth (b, h, w)
         """
-        # optional: normalizes the input
-        #x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
+        #### Use all pieces built earlier to process the image
         x = self.encoder(x)
 
         x = self.decoder(x)
 
-        #Getting the ouutputs
-        #segmentation_logits = self.segmentation_head(x)
-        #depth_prediction = self.depth_head(x).squeeze(1)
 
-        segmentation_logits = self.segmentation_head(x)
-        depth_prediction = self.depth_head(x).squeeze(1)
+        segmentation_logits = self.segmentation_head(x) #For every pixel in the image, it elonges to this class
+        depth_prediction = self.depth_head(x).squeeze(1) #How far each pixel is. Sequee removes the extra channel dimension since depth is just a 1-channel map
 
         return segmentation_logits, depth_prediction
 
-
-
-        # TODO: replace with actual forward pass
-        #logits = torch.randn(x.size(0), 3, x.size(2), x.size(3))
-        #raw_depth = torch.rand(x.size(0), x.size(2), x.size(3))
-
-        #return logits, raw_depth
 
     def predict(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -219,7 +210,7 @@ class Detector(torch.nn.Module):
         logits, raw_depth = self(x)
         pred = logits.argmax(dim=1)
 
-        # Optional additional post-processing for depth only if needed
+        
         depth = raw_depth
 
         return pred, depth
