@@ -10,7 +10,6 @@ import torch.nn.functional as F
 
 from datasets.road_dataset import load_data  
 from models import Detector, save_model
-#from iou_visualizer import handle_bboxes  
 
 
 BATCH_SIZE = 16
@@ -19,13 +18,14 @@ EPOCHS = 32
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class_weights = torch.tensor([0.1, 2.5, 2.5]).to(DEVICE)  # Reduce background weight
-seg_loss_fn = nn.CrossEntropyLoss(weight=class_weights)
-depth_loss_fn = nn.L1Loss() 
+seg_loss_fn = nn.CrossEntropyLoss(weight=class_weights) # segmentation loss
+depth_loss_fn = nn.L1Loss()  # Depth loss
 
+# Measuing how well two areas overlap
 def dice_loss(pred, target, smooth=1e-6):
     pred = torch.sigmoid(pred)
-    target = F.one_hot(target.long(), num_classes=pred.shape[1])  # Convert target to one-hot
-    target = target.permute(0, 3, 1, 2).float()  # Reshape to (B, C, H, W)
+    target = F.one_hot(target.long(), num_classes=pred.shape[1]) 
+    target = target.permute(0, 3, 1, 2).float()  
     
     intersection = (pred * target).sum((1, 2, 3))
     union = pred.sum((1, 2, 3)) + target.sum((1, 2, 3))
@@ -33,53 +33,36 @@ def dice_loss(pred, target, smooth=1e-6):
     dice = (2. * intersection + smooth) / (union + smooth)
     return 1 - dice.mean()
 
+# Another overlap measuring
 def iou_loss(pred, target, smooth=1e-6):
   pred = torch.sigmoid(pred)
 
-  target = F.one_hot(target.long(), num_classes=pred.shape[1])  # Ensure int64 type
-  target = target.permute(0, 3, 1, 2).float()  # Change shape to (B, C, H, W)
+  target = F.one_hot(target.long(), num_classes=pred.shape[1])  
+  target = target.permute(0, 3, 1, 2).float()  
 
   intersection = (pred * target).sum((1, 2))
   union = (pred + target - pred * target).sum((1, 2))
   iou = (intersection + smooth) / (union + smooth)
 
-  return (1 - iou.mean())  # Higher IoU is better, so we subtract from 1
+  return (1 - iou.mean()) 
 
-#def compute_iou(pred, target, num_classes=3, smooth=1e-6):
-    #"""
-    #Computes IoU for each class and returns the mean IoU.
-    #"""
-#    pred = pred.argmax(dim=1)  # Convert logits to class predictions
-#    ious = []
-    
-#    for cls in range(num_classes):
-#        pred_mask = (pred == cls).float()
-#        target_mask = (target == cls).float()
-#        
-#        intersection = (pred_mask * target_mask).sum()
-#        union = pred_mask.sum() + target_mask.sum() - intersection
-
-#        iou = (intersection + smooth) / (union + smooth)
-#        ious.append(iou)
-    
-#    return sum(ious) / len(ious)  # Mean IoU
-
+# Logs being saved in default as logs and making training results the same everytime sa default 2024
 def train(exp_dir: str = "logs", seed: int = 2024):
     
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
-        print("CUDA not available, using CPU")
+        print("using CPU")
         device = torch.device("cpu")
 
-    torch.manual_seed(seed)
+    torch.manual_seed(seed) #Makes training repetaable
 
     
     log_dir = Path(exp_dir) / f"detector_{datetime.now().strftime('%m%d_%H%M%S')}"
     logger = tb.SummaryWriter(log_dir)
 
     
-
+    # Loading the training data
     train_loader = load_data(
     dataset_path="/content/Homework3/homework3/drive_data/train",
     transform_pipeline="default",  
@@ -87,6 +70,7 @@ def train(exp_dir: str = "logs", seed: int = 2024):
     shuffle=True
 )
 
+    # Loading the validation data
     val_loader = load_data(
     dataset_path="/content/Homework3/homework3/drive_data/val",
     transform_pipeline="default",  
@@ -94,103 +78,81 @@ def train(exp_dir: str = "logs", seed: int = 2024):
     shuffle=False
 )
 
-
     
-    model = Detector().to(device)
-    #seg_loss_fn = nn.CrossEntropyLoss(weight=class_weights) # Replace CrossEntropyLoss
-    #depth_loss_fn = nn.L1Loss()  
+    model = Detector().to(device) #Adamm is popular that adjusts the learning rate automatically
 
-    
-    optimizer = optim.Adam(model.parameters(), lr=LR)
+    optimizer = optim.Adam(model.parameters(), lr=LR) # Sets the leraning rate
 
     global_step = 0
 
-    #best_iou = 0
-
-    
     for epoch in range(EPOCHS):
         model.train()
-        #val_iou = copmute_iou()
-
-        #if val_iou > best_iou:
-          #best_iou = val_iou
-          #torch.save(model.state_dict(), "Best_detector.th")
-
-
-        #val_seg_loss, val_depth_loss, val_iou_loss = 0.0, 0.0, 0.0
+      
         total_seg_loss, total_depth_loss, total_iou_loss = 0.0, 0.0, 0.0
-
 
         first_batch = True
 
         for batch in train_loader:
-            images = batch["image"].to(device)  
-            depth = batch["depth"].to(device)  
-            track = batch["track"].to(device)  
+            images = batch["image"].to(device)  # Inputs pictures to the device
+            depth = batch["depth"].to(device)  # How far things are in the picture
+            track = batch["track"].to(device)  # What each pixel is 
 
-            optimizer.zero_grad()
+            optimizer.zero_grad() #Erasing old learning notes
 
-            pred_seg, pred_depth = model(images)
+            pred_seg, pred_depth = model(images) # Guestting what each pixel is and how far each pixel is
 
+            # Calculating how wrong it s
             loss_seg = 0.5 * seg_loss_fn(pred_seg, track) + 0.5 * dice_loss(pred_seg, track) 
             loss_depth = depth_loss_fn(pred_depth, depth)  
             loss_iou = iou_loss(pred_seg, track)  
 
             
+            # Give different weights to teh losses, segmentation is most important, the IoU, then the depth
             loss = 1.5 * loss_seg + 0.5 * loss_depth + 0.8 * loss_iou  
-            loss.backward()
-            optimizer.step()
+            loss.backward() # How to fix the model
+            optimizer.step() 
 
-            #if first_batch:
-             # handle_bboxes(images, track, pred_seg, loss_iou.item(), epoch, logger, log_dir)
-              #first_batch = False  # Ensure it's only visualized once per epoch
-
-            total_seg_loss += loss_seg.item()
+            total_seg_loss += loss_seg.item() #Adds this batch loss to the total so we can compute averages and track the progress
             total_depth_loss += loss_depth.item()
             total_iou_loss += loss_iou.item()
-
             global_step += 1
-
+            # Sending loss values to the tensor
             logger.add_scalar("train/seg_loss", loss_seg.item(), global_step)
             logger.add_scalar("train/depth_loss", loss_depth.item(), global_step)
             logger.add_scalar("train/iou_loss", loss_iou.item(), global_step)
-            logger.flush()
+            logger.flush() 
         
-        with torch.inference_mode():
-            model.eval()
-            val_seg_loss, val_depth_loss, val_iou_loss = 0, 0, 0
+        with torch.inference_mode(): #turns off the gradient tracking faster with less memory
+            model.eval() #Putting the model in eval mode
+            val_seg_loss, val_depth_loss, val_iou_loss = 0, 0, 0 #How well the model does
             mean_iou = 0
 
             for batch in val_loader:
-                images = batch["image"].to(device)
-                depth = batch["depth"].to(device)
-                track = batch["track"].to(device)
-
-                pred_seg, pred_depth = model(images)
-
-                loss_seg =0.5 * seg_loss_fn(pred_seg, track) + 0.5 * dice_loss(pred_seg, track)
+                images = batch["image"].to(device) #New test images
+                depth = batch["depth"].to(device) 
+                track = batch["track"].to(device) #Correct labels
+                pred_seg, pred_depth = model(images) # Predicted class for each pixel
+                loss_seg =0.5 * seg_loss_fn(pred_seg, track) + 0.5 * dice_loss(pred_seg, track) #How wrong teh model is
                 loss_depth = depth_loss_fn(pred_depth, depth)
                 loss_iou = iou_loss(pred_seg, track)
-
                 val_seg_loss += loss_seg.item()
                 val_depth_loss += loss_depth.item()
                 val_iou_loss += loss_iou.item()
 
                 mean_iou += loss_iou.item()
 
-        mean_iou /= len(val_loader)
+        mean_iou /= len(val_loader) #Giving me the iou acccorss all batches
 
         logger.add_scalar("val/seg_loss", val_seg_loss / len(val_loader), global_step)
         logger.add_scalar("val/depth_loss", val_depth_loss / len(val_loader), global_step)
-        logger.add_scalar("val/iou_loss", val_iou_loss / len(val_loader), global_step)  # Log IoU validation loss
+        logger.add_scalar("val/iou_loss", val_iou_loss / len(val_loader), global_step)  
         logger.flush()
 
         print(f"Epoch {epoch+1}/{EPOCHS} - Seg Loss: {total_seg_loss:.4f}, Depth Loss: {total_depth_loss:.4f}")
         print(f"             - val SEG LOSS: {val_seg_loss: .4f}, Val Deph Loss: {val_depth_loss: .4f}")
-
     
     save_model(model)
-    print("Model saved as detector.th")
+    print("detector.th Saved")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
